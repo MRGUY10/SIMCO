@@ -1,5 +1,5 @@
 # Frontend Dockerfile
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
@@ -12,8 +12,14 @@ RUN npm install
 # Copy application code
 COPY . .
 
+# Build for production
+RUN npm run build
+
+# Install serve for production
+RUN npm install -g serve
+
 # Expose port
 EXPOSE 5173
 
-# Run development server
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Serve production build
+CMD ["serve", "-s", "dist", "-l", "5173"]
