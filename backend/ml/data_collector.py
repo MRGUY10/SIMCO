@@ -12,7 +12,7 @@ from pathlib import Path
 class DataCollector:
     def __init__(self, data_dir="training_data"):
         self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
         self.sessions_file = self.data_dir / "sessions.jsonl"
         self.features_file = self.data_dir / "features.csv"
         
