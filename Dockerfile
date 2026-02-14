@@ -12,10 +12,9 @@ COPY backend .
 
 # Install Ollama
 RUN apt-get update && apt-get install -y curl zstd && \
-	curl -fsSL https://ollama.com/install.sh | sh && \
-	ollama pull mistral
+	curl -fsSL https://ollama.com/install.sh | sh
 
 EXPOSE 8000
 EXPOSE 11434
 
-CMD ollama serve & uvicorn main:app --host 0.0.0.0 --port 8000
+CMD bash -c 'ollama serve & sleep 3 && ollama pull mistral && uvicorn main:app --host 0.0.0.0 --port 8000'
