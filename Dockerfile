@@ -7,6 +7,9 @@ FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y curl zstd && \
     curl -fsSL https://ollama.com/install.sh | sh
 
+# Set Ollama to listen on all interfaces
+ENV OLLAMA_HOST=0.0.0.0:11434
+
 EXPOSE 11434
 
-CMD bash -c 'ollama serve --host 0.0.0.0 & sleep 5 && ollama pull mistral && tail -f /dev/null'
+CMD bash -c 'ollama serve & sleep 5 && ollama pull mistral && tail -f /dev/null'
