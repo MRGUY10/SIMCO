@@ -19,12 +19,28 @@ SIMCO (Système Intelligent Multimodal d'Évaluation Cognitive) est une platefor
 
 ## Démarrage rapide
 
-### Prérequis
+### Avec Docker (recommandé)
+
+```bash
+# Lancer le setup automatique
+./docker-setup.sh    # Linux/Mac
+# ou
+.\docker-setup.ps1   # Windows
+
+# Les services seront disponibles sur :
+# - Frontend: http://localhost:5173
+# - Backend:  http://localhost:8000
+# - Ollama:   http://localhost:11434
+```
+
+### Installation manuelle
+
+#### Prérequis
 - Python 3.10+
 - Node.js 18+
 - Ollama (pour Mistral)
 
-### Installation
+#### Installation
 
 ```bash
 # Backend
@@ -67,6 +83,7 @@ ollama run mistral
 backend/
   main.py
   requirements.txt
+  Dockerfile
   ...
 quiz-frontend/
   src/
@@ -74,7 +91,11 @@ quiz-frontend/
       QuizPage.jsx
       WebcamAnalyzer.jsx
       ...
+  Dockerfile
   ...
+docker-compose.yml
+docker-setup.sh
+docker-setup.ps1
 ```
 
 ## Données et entraînement ML
