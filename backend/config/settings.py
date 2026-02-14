@@ -18,11 +18,12 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:3000",
         "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
+        "https://simco-285d.onrender.com"
     ]
     
     # Ollama LLM
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_BASE_URL: str = "https://simco-ollama.onrender.com"
     OLLAMA_MODEL: str = "mistral"
     OLLAMA_TIMEOUT: int = 120
     
