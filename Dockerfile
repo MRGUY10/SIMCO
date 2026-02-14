@@ -1,15 +1,12 @@
-# This Dockerfile is for deploying the FastAPI backend on Render or similar platforms.
-# It is a copy of backend/Dockerfile for compatibility with platforms expecting a root Dockerfile.
+# Dockerfile for deploying Ollama service on Render or similar platforms.
+# This runs only the Ollama server with the mistral model.
 
-FROM node:22-alpine
+FROM ubuntu:22.04
 
-WORKDIR /app
+# Install dependencies
+RUN apt-get update && apt-get install -y curl zstd && \
+    curl -fsSL https://ollama.com/install.sh | sh
 
-COPY quiz-frontend/package*.json ./
-RUN npm install
+EXPOSE 11434
 
-COPY quiz-frontend .
-
-EXPOSE 5173
-
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+CMD bash -c 'ollama serve & sleep 5 && ollama pull mistral && tail -f /dev/null'
