@@ -9,4 +9,4 @@ RUN apt-get update && apt-get install -y curl zstd && \
 
 EXPOSE 11434
 
-CMD bash -c 'ollama serve & sleep 5 && ollama pull mistral && tail -f /dev/null'
+CMD bash -c 'ollama serve --host 0.0.0.0 & sleep 5 && ollama pull mistral && tail -f /dev/null'
