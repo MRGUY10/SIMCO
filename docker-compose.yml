@@ -51,7 +51,7 @@ services:
       - ollama-data:/root/.ollama
     networks:
       - simco-network
-    command: serve
+    entrypoint: ["/bin/sh", "-c", "ollama pull mistral && ollama serve"]
 
 volumes:
   backend-data:
