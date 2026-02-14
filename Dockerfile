@@ -1,15 +1,21 @@
 # This Dockerfile is for deploying the FastAPI backend on Render or similar platforms.
 # It is a copy of backend/Dockerfile for compatibility with platforms expecting a root Dockerfile.
 
-FROM node:22-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY quiz-frontend/package*.json ./
-RUN npm install
+COPY backend/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY quiz-frontend .
+COPY backend .
 
-EXPOSE 5173
+# Install Ollama
+RUN apt-get update && apt-get install -y curl && \
+	curl -fsSL https://ollama.com/install.sh | sh && \
+	ollama pull mistral
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+EXPOSE 8000
+EXPOSE 11434
+
+CMD ollama serve & uvicorn main:app --host 0.0.0.0 --port 8000
