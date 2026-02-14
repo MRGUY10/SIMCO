@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     
     # Ollama LLM
     OLLAMA_BASE_URL: str = "https://simco-ollama.onrender.com"
-    OLLAMA_MODEL: str = "mistral"
+    OLLAMA_MODEL: str = "tinyllama"
     OLLAMA_TIMEOUT: int = 120
     
     # ML Models
