@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     
     # API
     API_V1_PREFIX: str = "/api/v1"
+
+    # Database
+    DATABASE_URL: str = ""
+    SQLITE_DB_PATH: str = "data/sessions.db"
+    JSON_SESSIONS_DIR: str = "data/sessions_json"
     
     # CORS
     CORS_ORIGINS: List[str] = [
@@ -22,17 +27,12 @@ class Settings(BaseSettings):
     ]
     
     # Ollama LLM
-    OLLAMA_BASE_URL: str = "http://ollama:11434"
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral"
     OLLAMA_TIMEOUT: int = 120
-    
-    # ML Models
-    ML_MODELS_PATH: str = "data/models"
-    USE_ML_MODELS: bool = True
-    
-    # Data Collection
-    TRAINING_DATA_PATH: str = "data/training"
-    AUTO_COLLECT_DATA: bool = True
+
+    # SIMCO Logic (neural confidence service)
+    SIMCO_LOGIC_BASE_URL: str = "http://localhost:8010"
     
     # Session Management
     SESSION_TIMEOUT: int = 3600  # 1 hour in seconds

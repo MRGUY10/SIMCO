@@ -40,11 +40,8 @@ env/
 .env.local
 .env.*.local
 
-# Data
-data/training/*.jsonl
-data/training/*.csv
-data/models/*.pkl
-data/models/*.joblib
+# Local SQLite files
+data/*.db
 
 # Logs
 *.log

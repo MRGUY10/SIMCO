@@ -1,38 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 import requests
-import json
 import re
 from uuid import uuid4
-from pathlib import Path
 
 # Import from organized modules
-from config import settings
-from ml import DataCollector, BehavioralModelTrainer
-
-# Initialize data collector
-data_collector = DataCollector(data_dir=settings.TRAINING_DATA_PATH)
-
-# Try to load trained models if available
-USE_TRAINED_MODELS = False
-model_trainer = None
-if settings.USE_ML_MODELS:
-    try:
-        model_trainer = BehavioralModelTrainer(
-            data_dir=settings.TRAINING_DATA_PATH,
-            models_dir=settings.ML_MODELS_PATH
-        )
-        model_path = Path(settings.ML_MODELS_PATH) / "stress_classifier.pkl"
-        if model_path.exists():
-            model_trainer.load_models()
-            USE_TRAINED_MODELS = True
-            print("✅ Loaded trained behavioral models")
-        else:
-            print("⚠️ No trained models found, using rule-based analysis")
-    except Exception as e:
-        print(f"⚠️ Model loading failed: {e}, using rule-based analysis")
+from .config import settings
+from .core.session_store import init_session_store, save_session, load_session
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -52,9 +28,90 @@ app.add_middleware(
 # Ollama configuration
 OLLAMA_API_URL = f"{settings.OLLAMA_BASE_URL}/api/generate"
 OLLAMA_MODEL = settings.OLLAMA_MODEL
+SIMCO_LOGIC_BASE_URL = settings.SIMCO_LOGIC_BASE_URL
 
 # Store quiz sessions in memory (in production, use a database)
 quiz_sessions = {}
+
+
+def get_session(session_id: str):
+    session = quiz_sessions.get(session_id)
+    if session is not None:
+        return session
+
+    db_session = load_session(session_id)
+    if db_session is not None:
+        quiz_sessions[session_id] = db_session
+    return db_session
+
+
+def persist_session(session_id: str) -> None:
+    session = quiz_sessions.get(session_id)
+    if session is not None:
+        save_session(session_id, session)
+
+
+def normalize_self_confidence(value) -> float:
+    """Normalize confidence input to [0, 1]. Accepts either [0,100] or [0,1] scale."""
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.5
+
+    # If already normalized, keep scale. Otherwise convert from percentage.
+    normalized = numeric if 0 <= numeric <= 1 else (numeric / 100.0)
+    return max(0.0, min(1.0, normalized))
+
+
+def confidence_to_percent(value) -> float:
+    """Return confidence on [0,100] scale from either [0,1] or [0,100] input."""
+    return round(normalize_self_confidence(value) * 100.0, 2)
+
+
+def compute_true_confidence(session: dict, self_confidence_normalized: float) -> dict:
+    """Compute true confidence using only SIMCO Logic neural model."""
+    face_confidence_per_question = []
+    behavioral_data = session.get("behavioral_data", {}) or {}
+
+    for q in session.get("questions", []):
+        qid = q.get("id")
+        q_metrics = behavioral_data.get(qid, {}) if isinstance(behavioral_data, dict) else {}
+        face_conf = q_metrics.get("face_final_confidence")
+        if face_conf is not None:
+            try:
+                face_confidence_per_question.append(float(face_conf))
+            except (TypeError, ValueError):
+                continue
+
+    payload = {
+        "self_confidence": self_confidence_normalized,
+        "face_confidence_per_question": face_confidence_per_question,
+    }
+
+    try:
+        response = requests.post(
+            f"{SIMCO_LOGIC_BASE_URL}/analyze/true-confidence",
+            json=payload,
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail=f"SIMCO Logic unavailable: {exc}") from exc
+
+    if not response.ok:
+        raise HTTPException(
+            status_code=503,
+            detail=f"SIMCO Logic error: status {response.status_code}",
+        )
+
+    data = response.json()
+    if "true_confidence" not in data or "true_confidence_normalized" not in data:
+        raise HTTPException(status_code=503, detail="SIMCO Logic returned invalid true confidence payload")
+
+    return {
+        "true_confidence": data.get("true_confidence"),
+        "true_confidence_normalized": data.get("true_confidence_normalized"),
+        "source": "simco_logic",
+    }
 
 class QuestionRequest(BaseModel):
     subject: str
@@ -68,11 +125,10 @@ class AnswerSubmission(BaseModel):
     confidence: int = 50  # User's confidence level
     behavioral_data: Optional[dict] = None  # Webcam metrics
 
-class QuizSession(BaseModel):
-    session_id: str
-    questions: List[dict]
-    score: int = 0
-    total_questions: int = 0
+
+class TrueConfidenceRequest(BaseModel):
+    self_confidence: float = Field(..., ge=0.0, le=1.0)
+    face_confidence_per_question: List[float] = Field(default_factory=list)
 
 @app.get("/")
 def root():
@@ -83,80 +139,39 @@ def root():
         "status": "running"
     }
 
-@app.get("/health")
+@app.get("/health") 
 def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "ml_models_loaded": USE_TRAINED_MODELS,
         "ollama_url": OLLAMA_API_URL
     }
 
-@app.post("/generate-question")
-def generate_question(req: QuestionRequest):
-    prompt = f"""Génère une question de quiz à choix multiples en {req.subject} pour un niveau {req.level}. {req.user_info}
 
-Format EXACT requis (respecte ce format strictement):
-Question: [La question ici]
-A) [Option A]
-B) [Option B]
-C) [Option C]
-D) [Option D]
-Réponse correcte: [A, B, C ou D]
-Explication: [Brève explication de la réponse]"""
-    
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False
-    }
-    
+@app.post("/analyze/true-confidence")
+def analyze_true_confidence(payload: TrueConfidenceRequest):
+    """Proxy endpoint to SIMCO Logic neural confidence service."""
     try:
-        response = requests.post(OLLAMA_API_URL, json=payload)
-        response.raise_for_status()
-        data = response.json()
-        generated_text = data.get("response", "")
-        
-        # Parse the response to extract question, options, and correct answer
-        parsed_question = parse_quiz_response(generated_text)
-        
-        if not parsed_question:
-            # Fallback if parsing fails
-            return {
-                "question": generated_text,
-                "options": [],
-                "correct_answer": 0,
-                "explanation": "Réponse non disponible"
-            }
-        
-        # Create a session for this question
-        session_id = str(uuid4())
-        question_id = str(uuid4())
-        
-        quiz_sessions[session_id] = {
-            "questions": [{
-                "id": question_id,
-                "question": parsed_question["question"],
-                "options": parsed_question["options"],
-                "correct_answer": parsed_question["correct_answer"],
-                "explanation": parsed_question["explanation"]
-            }],
-            "score": 0,
-            "total_questions": 1,
-            "answered": []
-        }
-        
-        return {
-            "session_id": session_id,
-            "question_id": question_id,
-            "question": parsed_question["question"],
-            "options": parsed_question["options"],
-            "explanation": parsed_question["explanation"]
-        }
-        
-    except Exception as e:
-        print("Error communicating with Ollama API:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        response = requests.post(
+            f"{SIMCO_LOGIC_BASE_URL}/analyze/true-confidence",
+            json=payload.model_dump(),
+            timeout=5,
+        )
+    except requests.RequestException as exc:
+        raise HTTPException(status_code=503, detail=f"SIMCO Logic unavailable: {exc}") from exc
+
+    if not response.ok:
+        raise HTTPException(
+            status_code=503,
+            detail=f"SIMCO Logic error: status {response.status_code}",
+        )
+
+    return response.json()
+
+
+@app.on_event("startup")
+def startup_event():
+    init_session_store()
 
 def parse_quiz_response(text: str) -> Optional[dict]:
     """Parse the generated quiz response to extract structured data"""
@@ -208,7 +223,7 @@ def parse_quiz_response(text: str) -> Optional[dict]:
 @app.post("/submit-answer")
 def submit_answer(submission: AnswerSubmission):
     """Submit an answer and check if it's correct"""
-    session = quiz_sessions.get(submission.session_id)
+    session = get_session(submission.session_id)
     
     if not session:
         raise HTTPException(status_code=404, detail="Session non trouvée")
@@ -235,16 +250,13 @@ def submit_answer(submission: AnswerSubmission):
         session["user_answers_data"] = {}
     session["user_answers_data"][submission.question_id] = submission.selected_answer
     
-    # Store confidence level
-    if "confidence_data" not in session:
-        session["confidence_data"] = {}
-    session["confidence_data"][submission.question_id] = submission.confidence
-    
     # Store behavioral data if provided
     if submission.behavioral_data:
         if "behavioral_data" not in session:
             session["behavioral_data"] = {}
         session["behavioral_data"][submission.question_id] = submission.behavioral_data
+
+    persist_session(submission.session_id)
     
     return {
         "correct": is_correct,
@@ -258,54 +270,44 @@ def submit_answer(submission: AnswerSubmission):
 async def update_confidence(request: dict):
     """Update the confidence level for all answers in a session"""
     session_id = request.get("session_id")
-    confidence = request.get("confidence")
+    self_confidence = request.get("self_confidence")
+    if self_confidence is None:
+        # Backward compatibility with older frontend payloads
+        self_confidence = request.get("confidence")
     
-    if not session_id or confidence is None:
-        raise HTTPException(status_code=400, detail="session_id and confidence are required")
+    if not session_id or self_confidence is None:
+        raise HTTPException(status_code=400, detail="session_id and self_confidence are required")
     
-    session = quiz_sessions.get(session_id)
+    session = get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    normalized_self_confidence = normalize_self_confidence(self_confidence)
+    self_confidence_percent = round(normalized_self_confidence * 100.0, 2)
     
-    # Update confidence_data for all answered questions
-    if "confidence_data" not in session:
-        session["confidence_data"] = {}
-    
-    # Update confidence for all questions that were answered
-    for question_id in session.get("answered", []):
-        session["confidence_data"][question_id] = confidence
-    
-    # Store the overall confidence
-    session["overall_confidence"] = confidence
+    # Store one global self-confidence for the whole session
+    session["self_confidence"] = self_confidence_percent
+    session["self_confidence_normalized"] = normalized_self_confidence
+    # Keep backward compatibility key in persisted session
+    session["overall_confidence"] = self_confidence_percent
+    # Clean old per-question confidence payloads if they exist
+    if "confidence_data" in session:
+        del session["confidence_data"]
+
+    persist_session(session_id)
     
     return {
         "success": True,
-        "message": "Confidence updated successfully",
+        "message": "Self confidence updated successfully",
+        "self_confidence": self_confidence_percent,
+        "self_confidence_normalized": normalized_self_confidence,
         "updated_questions": len(session.get("answered", []))
-    }
-
-@app.get("/quiz-score/{session_id}")
-def get_quiz_score(session_id: str):
-    """Get the current score for a quiz session"""
-    session = quiz_sessions.get(session_id)
-    
-    if not session:
-        raise HTTPException(status_code=404, detail="Session non trouvée")
-    
-    percentage = (session["score"] / session["total_questions"] * 100) if session["total_questions"] > 0 else 0
-    
-    return {
-        "session_id": session_id,
-        "score": session["score"],
-        "total_questions": session["total_questions"],
-        "percentage": round(percentage, 2),
-        "answered": len(session["answered"])
     }
 
 @app.get("/quiz-results/{session_id}")
 def get_quiz_results(session_id: str):
     """Get comprehensive quiz results with analysis and recommendations"""
-    session = quiz_sessions.get(session_id)
+    session = get_session(session_id)
     
     if not session:
         raise HTTPException(status_code=404, detail="Session non trouvée")
@@ -335,6 +337,15 @@ def get_quiz_results(session_id: str):
     # Collect detailed question results
     question_results = []
     user_answers_data = session.get("user_answers_data", {})
+    behavioral_data = session.get("behavioral_data", {}) if isinstance(session.get("behavioral_data", {}), dict) else {}
+
+    # Global self confidence (single value for the full quiz)
+    global_self_conf = session.get("self_confidence", session.get("overall_confidence", 50))
+    try:
+        global_self_conf = confidence_to_percent(global_self_conf)
+    except Exception:
+        global_self_conf = 50.0
+    legacy_confidence_per_question = session.get("confidence_per_question", {}) if isinstance(session.get("confidence_per_question", {}), dict) else {}
     
     for q in session["questions"]:
         q_id = q["id"]
@@ -344,15 +355,53 @@ def get_quiz_results(session_id: str):
         
         if is_answered:
             is_correct = user_answer == q["correct_answer"]
+
+        # Prefer legacy per-question confidence if available, else fallback to global confidence
+        raw_declared = legacy_confidence_per_question.get(q_id, global_self_conf)
+        try:
+            declared_confidence = confidence_to_percent(raw_declared)
+        except Exception:
+            declared_confidence = global_self_conf
+
+        # Optional face confidence from webcam pipeline
+        q_behavior = behavioral_data.get(q_id, {}) if isinstance(behavioral_data, dict) else {}
+        raw_face_conf = q_behavior.get("face_final_confidence")
+        face_confidence = None
+        if raw_face_conf is not None:
+            try:
+                raw_face_conf_float = float(raw_face_conf)
+                face_confidence = round(raw_face_conf_float * 100.0, 1) if raw_face_conf_float <= 1.0 else round(raw_face_conf_float, 1)
+            except Exception:
+                face_confidence = None
+
+        # Human-friendly per-question analysis
+        # Use face confidence for analysis when available (this is what frontend displays).
+        analysis_confidence = face_confidence if face_confidence is not None else declared_confidence
+        if not is_answered:
+            confidence_analysis = "Question non répondue."
+        elif is_correct and analysis_confidence >= 70:
+            confidence_analysis = "Bonne réponse avec confiance élevée : continue cette méthode."
+        elif is_correct and analysis_confidence < 40:
+            confidence_analysis = "Bonne réponse mais confiance basse : fais plus confiance à ton raisonnement."
+        elif (not is_correct) and analysis_confidence >= 70:
+            confidence_analysis = "Confiance élevée mais réponse incorrecte : vérifie davantage avant de valider."
+        elif (not is_correct) and analysis_confidence < 40:
+            confidence_analysis = "Confiance basse et réponse incorrecte : reprends les bases de ce type de question."
+        else:
+            confidence_analysis = "Confiance et résultat partiellement alignés : continue à ajuster ton auto-évaluation."
         
         question_results.append({
+            "question_id": q_id,
             "question": q["question"],
             "options": q["options"],
             "correct_answer": q["correct_answer"],
             "user_answer": user_answer,
             "is_correct": is_correct,
             "is_answered": is_answered,
-            "explanation": q["explanation"]
+            "explanation": q["explanation"],
+            "declared_confidence": round(declared_confidence, 1),
+            "face_confidence": face_confidence,
+            "confidence_analysis": confidence_analysis
         })
     
     # Generate recommendations based on performance
@@ -383,33 +432,46 @@ def get_quiz_results(session_id: str):
             "Envisagez de mentorer d'autres étudiants"
         ])
     
+    # Use one declared confidence value for all answers (user inputs once)
+    self_confidence = session.get("self_confidence")
+    if self_confidence is None:
+        self_confidence = session.get("overall_confidence")
+    if self_confidence is None:
+        # Backward compatibility with older sessions
+        old_conf = session.get("confidence_data", {})
+        if isinstance(old_conf, dict) and old_conf:
+            self_confidence = next(iter(old_conf.values()))
+        else:
+            self_confidence = 50
+
+    # Keep both scales available in backend
+    self_confidence = confidence_to_percent(self_confidence)
+    self_confidence_normalized = round(self_confidence / 100.0, 4)
+    session["self_confidence"] = self_confidence
+    session["self_confidence_normalized"] = self_confidence_normalized
+
+    true_confidence = compute_true_confidence(session, self_confidence_normalized)
+
     # Analyze behavioral data if available
     behavioral_analysis = None
     behavioral_insights = []
     if "behavioral_data" in session and session["behavioral_data"]:
         behavioral_analysis = analyze_behavioral_data(
             session["behavioral_data"],
-            session["confidence_data"],
+            self_confidence,
             session["user_answers_data"],
             session["questions"]
         )
         behavioral_insights = behavioral_analysis.get("insights", [])
-    
-    # Save session data for training
-    try:
-        session_data = {
-            "session_id": session_id,
-            "score": score,
-            "total_questions": total,
-            "percentage": percentage,
-            "questions": session["questions"],
-            "user_answers_data": session["user_answers_data"],
-            "confidence_data": session["confidence_data"],
-            "behavioral_data": session["behavioral_data"]
-        }
-        data_collector.save_session(session_data)
-    except Exception as e:
-        print(f"Warning: Failed to save session data: {e}")
+
+    # Dunning-Kruger effect analysis
+    dk_analysis = calculate_dunning_kruger(
+        score_percentage=percentage,
+        confidence_data=self_confidence,
+        answers_data=session.get("user_answers_data", {}),
+        questions=session.get("questions", []),
+        behavioral_data=session.get("behavioral_data", {})
+    )
     
     return {
         "session_id": session_id,
@@ -422,60 +484,178 @@ def get_quiz_results(session_id: str):
         "question_results": question_results,
         "recommendations": recommendations,
         "answered_count": len(session["answered"]),
+        "self_confidence": self_confidence,
+        "self_confidence_normalized": self_confidence_normalized,
+        "true_confidence": true_confidence,
         "behavioral_analysis": behavioral_analysis,
-        "behavioral_insights": behavioral_insights
+        "behavioral_insights": behavioral_insights,
+        "dunning_kruger": dk_analysis
     }
 
-def analyze_behavioral_data(behavioral_data, confidence_data, answers_data, questions):
+def calculate_dunning_kruger(score_percentage, confidence_data, answers_data, questions, behavioral_data=None):
+    """
+    Calculate Dunning-Kruger effect based on:
+    - Declared confidence vs actual performance
+    - Behavioral signals (blink rate, hesitation, hover times)
+    - Per-question calibration analysis
+    """
+    if not questions:
+        return None
+
+    per_question = []
+    total_declared_confidence = 0
+    total_behavioral_confidence = 0
+    n = len(questions)
+
+    for q in questions:
+        qid = q["id"]
+        declared_conf = 50 if confidence_data is None else confidence_data
+        is_correct = answers_data.get(qid) == q["correct_answer"] if qid in answers_data else None
+        is_answered = qid in answers_data
+
+        # Compute behavioral confidence correction
+        behavioral_conf = declared_conf
+        b = (behavioral_data or {}).get(qid, {})
+        answer_changes = b.get("answer_changes", 0)
+        blink_rate = b.get("blink_rate", 0)
+        hover_time = b.get("total_hover_time", 0)
+        time_first_click = b.get("time_to_first_click", 10)
+
+        if answer_changes > 1:
+            behavioral_conf -= answer_changes * 5
+        if blink_rate > 20:
+            behavioral_conf -= 10
+        if hover_time > 15:
+            behavioral_conf -= 5
+        if time_first_click < 3 and is_correct:
+            behavioral_conf += 10
+        behavioral_conf = max(0, min(100, behavioral_conf))
+
+        # Determine DK signal per question
+        if is_answered and is_correct is not None:
+            if declared_conf > 65 and not is_correct:
+                dk_signal = "overconfident"
+            elif declared_conf < 40 and is_correct:
+                dk_signal = "underconfident"
+            else:
+                dk_signal = "calibrated"
+        else:
+            dk_signal = "unanswered"
+
+        per_question.append({
+            "question_index": questions.index(q) + 1,
+            "question_id": qid,
+            "declared_confidence": declared_conf,
+            "behavioral_confidence": round(behavioral_conf, 1),
+            "is_correct": is_correct,
+            "is_answered": is_answered,
+            "dk_signal": dk_signal
+        })
+
+        total_declared_confidence += declared_conf
+        total_behavioral_confidence += behavioral_conf
+
+    avg_declared = total_declared_confidence / n
+    avg_behavioral = total_behavioral_confidence / n
+    dk_index = round(avg_behavioral - score_percentage, 2)
+
+    # Classify zone
+    if score_percentage < 40:
+        if dk_index > 20:
+            zone = "dunning_kruger_peak"
+            zone_label = "Pic Dunning-Kruger"
+            message = "Vous surestimez significativement vos connaissances"
+            recommendation = "Pratiquez davantage et confrontez vos connaissances à des sources fiables"
+            color = "red"
+        elif dk_index < -20:
+            zone = "conscious_incompetence"
+            zone_label = "Incompétence Consciente"
+            message = "Vous êtes conscient de vos lacunes — c'est le premier pas vers la maîtrise"
+            recommendation = "Continuez à apprendre, vous progressez bien"
+            color = "orange"
+        else:
+            zone = "beginner_calibrated"
+            zone_label = "Débutant Calibré"
+            message = "Votre auto-évaluation est réaliste pour votre niveau actuel"
+            recommendation = "Consolidez les bases et progressez étape par étape"
+            color = "yellow"
+    elif score_percentage < 70:
+        if dk_index > 20:
+            zone = "valley_of_despair"
+            zone_label = "Vallée du Désespoir"
+            message = "En progression mais avec une surconfiance partielle"
+            recommendation = "Identifiez précisément vos points faibles et travaillez-les"
+            color = "orange"
+        elif dk_index < -20:
+            zone = "impostor_syndrome"
+            zone_label = "Syndrome de l'Imposteur"
+            message = "Vous sous-estimez vos compétences réelles"
+            recommendation = "Faites confiance à vos connaissances, votre niveau est meilleur que vous ne le pensez"
+            color = "blue"
+        else:
+            zone = "slope_of_enlightenment"
+            zone_label = "Pente de l'Illumination"
+            message = "Bonne calibration en phase d'apprentissage intermédiaire"
+            recommendation = "Continuez sur cette lancée, vous évoluez bien"
+            color = "teal"
+    else:
+        if dk_index > 15:
+            zone = "expert_overconfident"
+            zone_label = "Expert Surconfiant"
+            message = "Excellentes connaissances avec légère tendance à la surconfiance"
+            recommendation = "Restez humble et continuez à approfondir"
+            color = "yellow"
+        elif dk_index < -15:
+            zone = "expert_modest"
+            zone_label = "Expert Humble"
+            message = "Véritable expertise avec humilité — profil d'expert accompli"
+            recommendation = "Partagez vos connaissances avec les autres"
+            color = "green"
+        else:
+            zone = "expert_calibrated"
+            zone_label = "Expert Calibré"
+            message = "Expertise élevée avec auto-évaluation précise — profil idéal"
+            recommendation = "Explorez des défis plus avancés et mentoring"
+            color = "green"
+
+    # Per-question breakdown counts
+    overconfident_count = sum(1 for q in per_question if q["dk_signal"] == "overconfident")
+    underconfident_count = sum(1 for q in per_question if q["dk_signal"] == "underconfident")
+    calibrated_count = sum(1 for q in per_question if q["dk_signal"] == "calibrated")
+    calibration_score = round((calibrated_count / n) * 100, 1) if n > 0 else 0
+
+    return {
+        "dk_index": dk_index,
+        "zone": zone,
+        "zone_label": zone_label,
+        "message": message,
+        "recommendation": recommendation,
+        "color": color,
+        "declared_confidence": round(avg_declared, 1),
+        "behavioral_confidence": round(avg_behavioral, 1),
+        "actual_score": round(score_percentage, 1),
+        "calibration_score": calibration_score,
+        "overconfident_count": overconfident_count,
+        "underconfident_count": underconfident_count,
+        "calibrated_count": calibrated_count,
+        "per_question": per_question
+    }
+
+
+def analyze_behavioral_data(behavioral_data, confidence_value, answers_data, questions):
     """Analyze webcam behavioral metrics to detect uncertainty patterns"""
     analysis = {
         "overall_stress_level": "low",
-        "metacognition_accuracy": "good",
         "insights": [],
         "avg_blink_rate": 0,
         "avg_head_movement": 0,
         "avg_gaze_stability": 0,
-        "confidence_calibration": "well_calibrated",
-        "ml_predictions": None
+        "confidence_calibration": "well_calibrated"
     }
-    
+
     if not behavioral_data:
         return analysis
-    
-    # Use trained ML models if available
-    if USE_TRAINED_MODELS:
-        try:
-            # Calculate average metrics for ML prediction
-            total_blink = sum(m.get("blink_rate", 0) for m in behavioral_data.values())
-            total_head = sum(m.get("head_movement_score", 0) for m in behavioral_data.values())
-            total_gaze = sum(m.get("gaze_stability", 0) for m in behavioral_data.values())
-            avg_conf = sum(confidence_data.values()) / len(confidence_data) if confidence_data else 50
-            count = len(behavioral_data)
-            
-            ml_input = {
-                "blink_rate": total_blink / count if count > 0 else 0,
-                "head_movement_score": total_head / count if count > 0 else 0,
-                "gaze_stability": total_gaze / count if count > 0 else 0,
-                "confidence": avg_conf
-            }
-            
-            # Get ML predictions
-            predictions = model_trainer.predict(ml_input)
-            analysis["ml_predictions"] = predictions
-            analysis["overall_stress_level"] = predictions["stress_level"]
-            
-            # Add ML-based insights
-            if predictions["stress_probability"] > 0.7:
-                analysis["insights"].append(f"Modèle ML détecte un stress élevé (probabilité: {predictions['stress_probability']*100:.0f}%)")
-            if predictions["low_attention_probability"] > 0.6:
-                analysis["insights"].append(f"Attention fluctuante détectée (probabilité: {predictions['low_attention_probability']*100:.0f}%)")
-            if predictions["predicted_confidence_error"] > 30:
-                analysis["insights"].append(f"Calibration de confiance à améliorer (erreur prédite: {predictions['predicted_confidence_error']:.1f})")
-            
-            return analysis
-        except Exception as e:
-            print(f"ML prediction failed, falling back to rule-based: {e}")
-    
+
     # Aggregate metrics
     total_blink_rate = 0
     total_head_movement = 0
@@ -498,9 +678,9 @@ def analyze_behavioral_data(behavioral_data, confidence_data, answers_data, ques
             if metrics.get("blink_rate", 0) > 25:
                 high_stress_questions.append(qid)
             
-            # Check confidence vs performance
-            if qid in confidence_data and qid in answers_data:
-                confidence = confidence_data[qid]
+            # Check confidence vs performance (single confidence for the whole quiz)
+            if qid in answers_data:
+                confidence = 50 if confidence_value is None else confidence_value
                 is_correct = answers_data[qid] == q["correct_answer"]
                 
                 # Overconfidence: high confidence but wrong answer
@@ -620,6 +800,7 @@ Explication: [Brève explication de la réponse]"""
         "total_questions": len(questions),
         "answered": []
     }
+    persist_session(session_id)
     
     # Return questions without correct answers
     return {
