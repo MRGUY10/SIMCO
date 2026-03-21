@@ -24,7 +24,7 @@ services:
   # Backend FastAPI
   backend:
     build:
-      context: ./backend
+      context: ./services/quiz_backend
       dockerfile: Dockerfile
     container_name: simco-backend
     ports:
@@ -36,7 +36,7 @@ services:
       - TRAINING_DATA_PATH=/app/data/training
       - MODELS_PATH=/app/data/models
     volumes:
-      - ./backend:/app
+      - ./services/quiz_backend:/app/services/quiz_backend
       - backend-data:/app/data
     depends_on:
       postgres:
@@ -47,7 +47,7 @@ services:
         condition: service_started
     networks:
       - simco-network
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn services.quiz_backend.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Frontend React (Vite)
   frontend:
@@ -71,7 +71,7 @@ services:
   # Face Classification Backend
   face-backend:
     build:
-      context: ./face_classification
+      context: ./services/face_backend
       dockerfile: Dockerfile
     container_name: simco-face-backend
     ports:

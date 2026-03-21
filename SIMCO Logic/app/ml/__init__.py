@@ -1,1 +1,0 @@
-from .confidence_model import predict_true_confidence
