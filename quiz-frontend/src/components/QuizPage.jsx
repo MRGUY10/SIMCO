@@ -262,7 +262,9 @@ function QuizPage({ onBackToHome }) {
           body: JSON.stringify({
             subject: subject,
             level: level,
-            user_info: userInfo
+            user_info: userInfo,
+            user_name: userName,
+            user_email: userEmail
           })
         })
         
@@ -1337,13 +1339,14 @@ function QuizPage({ onBackToHome }) {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email (optionnel)
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="email"
                   value={userEmail}
                   onChange={(e) => setUserEmail(e.target.value)}
                   placeholder="Ex: jean.dupont@email.com"
+                  required
                   className="w-full px-4 py-3 border border-primary-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all bg-white text-gray-900"
                 />
               </div>

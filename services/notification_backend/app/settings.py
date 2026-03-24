@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 ENV_FILE_PATH = Path(__file__).resolve().parents[1] / ".env"
+ENV_FILE_LOCAL_PATH = Path(__file__).resolve().parents[1] / ".env.local"
 
 
 class Settings(BaseSettings):
@@ -19,7 +20,10 @@ class Settings(BaseSettings):
     MAIL_FROM_NAME: str = "SIMCO Notifications"
     API_PORT: int = 8020
 
-    model_config = SettingsConfigDict(env_file=str(ENV_FILE_PATH), case_sensitive=True)
+    model_config = SettingsConfigDict(
+        env_file=(str(ENV_FILE_PATH), str(ENV_FILE_LOCAL_PATH)),
+        case_sensitive=True,
+    )
 
 
 settings = Settings()

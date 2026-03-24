@@ -33,6 +33,10 @@ class Settings(BaseSettings):
 
     # SIMCO Logic (neural confidence service)
     SIMCO_LOGIC_BASE_URL: str = "http://localhost:8010"
+
+    # Notification service
+    NOTIFICATION_BASE_URL: str = "http://localhost:8020"
+    NOTIFICATION_TIMEOUT_SECONDS: int = 5
     
     # Session Management
     SESSION_TIMEOUT: int = 3600  # 1 hour in seconds

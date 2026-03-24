@@ -117,6 +117,8 @@ class QuestionRequest(BaseModel):
     subject: str
     level: str
     user_info: str = ""
+    user_name: Optional[str] = ""
+    user_email: Optional[str] = ""
 
 class AnswerSubmission(BaseModel):
     session_id: str
@@ -129,6 +131,85 @@ class AnswerSubmission(BaseModel):
 class TrueConfidenceRequest(BaseModel):
     self_confidence: float = Field(..., ge=0.0, le=1.0)
     face_confidence_per_question: List[float] = Field(default_factory=list)
+
+
+def send_quiz_result_notification(session: dict, results_payload: dict) -> dict:
+    """Send quiz result email through notification backend (best-effort, non-blocking)."""
+    user_name = (session.get("user_name") or "").strip()
+    user_email = (session.get("user_email") or "").strip()
+
+    if not user_email:
+        return {
+            "attempted": False,
+            "sent": False,
+            "reason": "missing_user_email",
+        }
+
+    quiz_result_payload = {
+        "score": results_payload.get("score", 0),
+        "total_questions": results_payload.get("total_questions", 0),
+        "percentage": results_payload.get("percentage", 0),
+        "level": results_payload.get("level"),
+        "message": results_payload.get("message"),
+        "recommendations": results_payload.get("recommendations", []),
+        "self_confidence": results_payload.get("self_confidence"),
+        "true_confidence": (results_payload.get("true_confidence") or {}).get("true_confidence"),
+        "profile_label": (results_payload.get("dunning_kruger") or {}).get("zone_label"),
+    }
+
+    payload = {
+        "user_name": user_name or "Étudiant",
+        "user_email": user_email,
+        "quiz_result": quiz_result_payload,
+        "question_results": [
+            {
+                "question": q.get("question", ""),
+                "is_correct": q.get("is_correct"),
+                "confidence_analysis": q.get("confidence_analysis"),
+                "face_confidence": q.get("face_confidence"),
+            }
+            for q in results_payload.get("question_results", [])
+        ],
+        "dunning_kruger": {
+            "actual_score": (results_payload.get("dunning_kruger") or {}).get("actual_score"),
+            "declared_confidence": (results_payload.get("dunning_kruger") or {}).get("declared_confidence"),
+            "calibration_score": (results_payload.get("dunning_kruger") or {}).get("calibration_score"),
+        },
+    }
+
+    try:
+        response = requests.post(
+            f"{settings.NOTIFICATION_BASE_URL}/notifications/quiz-result",
+            json=payload,
+            timeout=settings.NOTIFICATION_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        return {
+            "attempted": True,
+            "sent": False,
+            "reason": "notification_service_unavailable",
+            "error": str(exc),
+        }
+
+    if not response.ok:
+        return {
+            "attempted": True,
+            "sent": False,
+            "reason": "notification_service_error",
+            "status_code": response.status_code,
+            "detail": response.text[:500],
+        }
+
+    try:
+        response_json = response.json()
+    except ValueError:
+        response_json = {"detail": "notification_sent"}
+
+    return {
+        "attempted": True,
+        "sent": True,
+        "detail": response_json.get("detail", "notification_sent"),
+    }
 
 @app.get("/")
 def root():
@@ -473,7 +554,7 @@ def get_quiz_results(session_id: str):
         behavioral_data=session.get("behavioral_data", {})
     )
     
-    return {
+    results_payload = {
         "session_id": session_id,
         "score": score,
         "total_questions": total,
@@ -491,6 +572,11 @@ def get_quiz_results(session_id: str):
         "behavioral_insights": behavioral_insights,
         "dunning_kruger": dk_analysis
     }
+
+    notification_result = send_quiz_result_notification(session, results_payload)
+    results_payload["notification"] = notification_result
+
+    return results_payload
 
 def calculate_dunning_kruger(score_percentage, confidence_data, answers_data, questions, behavioral_data=None):
     """
@@ -798,7 +884,10 @@ Explication: [Brève explication de la réponse]"""
         "questions": questions,
         "score": 0,
         "total_questions": len(questions),
-        "answered": []
+        "answered": [],
+        "user_name": (req.user_name or "").strip(),
+        "user_email": (req.user_email or "").strip(),
+        "user_info": req.user_info,
     }
     persist_session(session_id)
     
