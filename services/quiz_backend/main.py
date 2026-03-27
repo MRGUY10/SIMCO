@@ -25,9 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ollama configuration
+# LLM configuration
+LLM_PROVIDER = (settings.LLM_PROVIDER or "ollama").strip().lower()
 OLLAMA_API_URL = f"{settings.OLLAMA_BASE_URL}/api/generate"
-OLLAMA_MODEL = settings.OLLAMA_MODEL
+MISTRAL_CHAT_COMPLETIONS_URL = f"{settings.MISTRAL_API_BASE_URL.rstrip('/')}/chat/completions"
 SIMCO_LOGIC_BASE_URL = settings.SIMCO_LOGIC_BASE_URL
 
 # Store quiz sessions in memory (in production, use a database)
@@ -66,6 +67,80 @@ def normalize_self_confidence(value) -> float:
 def confidence_to_percent(value) -> float:
     """Return confidence on [0,100] scale from either [0,1] or [0,100] input."""
     return round(normalize_self_confidence(value) * 100.0, 2)
+
+
+def _extract_mistral_text(response_json: dict) -> str:
+    """Extract assistant content from Mistral chat completion payload."""
+    choices = response_json.get("choices") or []
+    if not choices:
+        return ""
+
+    message = (choices[0] or {}).get("message") or {}
+    content = message.get("content")
+    if isinstance(content, str):
+        return content
+
+    # Defensive support if content is returned as structured chunks.
+    if isinstance(content, list):
+        parts = []
+        for chunk in content:
+            if isinstance(chunk, dict):
+                text = chunk.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+
+    return ""
+
+
+def generate_question_text(prompt: str) -> str:
+    """Generate quiz text from selected LLM provider."""
+    if LLM_PROVIDER == "mistral_api":
+        if not settings.MISTRAL_API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="MISTRAL_API_KEY is missing. Set it in quiz backend environment.",
+            )
+
+        payload = {
+            "model": settings.MISTRAL_MODEL,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Tu génères des questions de quiz et tu respectes strictement le format demandé.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        response = requests.post(
+            MISTRAL_CHAT_COMPLETIONS_URL,
+            json=payload,
+            headers=headers,
+            timeout=settings.MISTRAL_TIMEOUT,
+        )
+        response.raise_for_status()
+        return _extract_mistral_text(response.json())
+
+    # Default provider: local Ollama
+    payload = {
+        "model": settings.OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+    }
+    response = requests.post(
+        OLLAMA_API_URL,
+        json=payload,
+        timeout=settings.OLLAMA_TIMEOUT,
+    )
+    response.raise_for_status()
+    return response.json().get("response", "")
 
 
 def compute_true_confidence(session: dict, self_confidence_normalized: float) -> dict:
@@ -225,7 +300,9 @@ def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "ollama_url": OLLAMA_API_URL
+        "llm_provider": LLM_PROVIDER,
+        "ollama_url": OLLAMA_API_URL,
+        "mistral_url": MISTRAL_CHAT_COMPLETIONS_URL,
     }
 
 
@@ -850,17 +927,8 @@ D) [Option D]
 Réponse correcte: [A, B, C ou D]
 Explication: [Brève explication de la réponse]"""
         
-        payload = {
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False
-        }
-        
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            generated_text = data.get("response", "")
+            generated_text = generate_question_text(prompt)
             
             parsed_question = parse_quiz_response(generated_text)
             
