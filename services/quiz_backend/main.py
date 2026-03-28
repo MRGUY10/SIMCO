@@ -210,6 +210,13 @@ class TrueConfidenceRequest(BaseModel):
 
 def send_quiz_result_notification(session: dict, results_payload: dict) -> dict:
     """Send quiz result email through notification backend (best-effort, non-blocking)."""
+    if not settings.NOTIFICATIONS_ENABLED:
+        return {
+            "attempted": False,
+            "sent": False,
+            "reason": "notifications_disabled",
+        }
+
     user_name = (session.get("user_name") or "").strip()
     user_email = (session.get("user_email") or "").strip()
 

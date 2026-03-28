@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     SIMCO_LOGIC_BASE_URL: str = "https://confidence-backend-v68b.onrender.com"
 
     # Notification service
+    NOTIFICATIONS_ENABLED: bool = False
     NOTIFICATION_BASE_URL: str = "https://notification-simco.onrender.com"
     NOTIFICATION_TIMEOUT_SECONDS: int = 5
     
