@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: simco-face-backend
+    runtime: docker
+    dockerfilePath: services/face_backend/Dockerfile
+    dockerContext: services/face_backend
+    envVars:
+      - key: FACE_CLASSIFIER_PORT
+        value: 8084
