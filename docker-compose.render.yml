@@ -71,7 +71,7 @@ services:
       - "5173:5173"
     environment:
       # For browser usage, point this to your public quiz-backend URL on Render.
-      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000}
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://quiz-backend-vyp4.onrender.com}
     depends_on:
       - quiz-backend
     restart: unless-stopped
