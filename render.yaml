@@ -1,9 +1,10 @@
 services:
   - type: web
     name: simco-notification-backend
-    runtime: docker
-    dockerfilePath: services/notification_backend/Dockerfile
-    dockerContext: services/notification_backend
+    runtime: python
+    rootDir: services/notification_backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MAIL_HOST
         sync: false
