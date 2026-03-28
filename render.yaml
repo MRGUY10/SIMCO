@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: services/notification_backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MAIL_HOST
         value: smtp.gmail.com
