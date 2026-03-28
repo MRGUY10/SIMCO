@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import QuizInterfacePage from './QuizInterfacePage'
 import WebcamAnalyzer from './WebcamAnalyzer'
 
-const API_BASE_URL = 'http://localhost:8000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://quiz-backend-vyp4.onrender.com'
 const FACE_API_BASE_URL = 'https://face-backend-s76p.onrender.com'
 
 function QuizPage({ onBackToHome }) {
