@@ -3,7 +3,7 @@ import QuizInterfacePage from './QuizInterfacePage'
 import WebcamAnalyzer from './WebcamAnalyzer'
 
 const API_BASE_URL = 'http://localhost:8000'
-const FACE_API_BASE_URL = 'http://127.0.0.1:8084'
+const FACE_API_BASE_URL = 'https://face-backend-s76p.onrender.com'
 
 function QuizPage({ onBackToHome }) {
   // Multi-step state

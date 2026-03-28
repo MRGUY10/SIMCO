@@ -59,10 +59,10 @@ class Settings(BaseSettings):
     MISTRAL_TIMEOUT: int = 60
 
     # SIMCO Logic (neural confidence service)
-    SIMCO_LOGIC_BASE_URL: str = "http://localhost:8010"
+    SIMCO_LOGIC_BASE_URL: str = "https://confidence-backend-v68b.onrender.com"
 
     # Notification service
-    NOTIFICATION_BASE_URL: str = "http://localhost:8020"
+    NOTIFICATION_BASE_URL: str = "https://notification-simco.onrender.com"
     NOTIFICATION_TIMEOUT_SECONDS: int = 5
     
     # Session Management
