@@ -9,8 +9,8 @@ ENV_FILE_LOCAL_PATH = Path(__file__).resolve().parents[1] / ".env.local"
 class Settings(BaseSettings):
     MAIL_HOST: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
-    MAIL_USERNAME: str = ""
-    MAIL_PASSWORD: str = ""
+    MAIL_USERNAME: str = "kamdem.guy@institutsaintjean.org"
+    MAIL_PASSWORD: str = "krcmwwfwnomgwmgi"
     MAIL_STARTTLS: bool = True
     MAIL_AUTH: bool = True
     MAIL_SSL_TRUST: str = "smtp.gmail.com"
