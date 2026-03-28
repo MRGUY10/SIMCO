@@ -1,4 +1,5 @@
 import smtplib
+import socket
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
@@ -6,6 +7,18 @@ from email.mime.application import MIMEApplication
 from .settings import settings
 from .schemas import NotificationRequest
 from .pdf_service import build_result_pdf
+
+
+def resolve_smtp_host(host: str, port: int) -> str:
+    if not settings.MAIL_FORCE_IPV4:
+        return host
+    try:
+        infos = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+        if infos:
+            return infos[0][4][0]
+    except OSError:
+        pass
+    return host
 
 
 def build_email_subject(percentage: float) -> str:
@@ -52,9 +65,10 @@ def send_notification_email(payload: NotificationRequest) -> tuple[bool, str]:
         settings.MAIL_TIMEOUT_MS,
         settings.MAIL_WRITE_TIMEOUT_MS,
     ) / 1000.0
+    smtp_host = resolve_smtp_host(settings.MAIL_HOST, settings.MAIL_PORT)
 
     try:
-        with smtplib.SMTP(settings.MAIL_HOST, settings.MAIL_PORT, timeout=timeout_seconds) as server:
+        with smtplib.SMTP(smtp_host, settings.MAIL_PORT, timeout=timeout_seconds) as server:
             if settings.MAIL_STARTTLS:
                 server.starttls()
             if settings.MAIL_AUTH:
