@@ -1,0 +1,16 @@
+{
+  "final_score": 0.1,
+  "self_confidence": 50,
+  "confidence_per_question": {
+    "b01acec9-3b95-4815-98d3-8af6fc6b14c7": 50,
+    "65d37e18-0d13-4d1c-a18b-6f6afa1a6cf8": 50,
+    "b90fdd04-ffb6-4d75-8e7a-78e2e3253b84": 50,
+    "ddd1d487-f109-4ce7-8749-7eec86534ce2": 50,
+    "849ee71b-ded7-4e02-b6f4-62d2ae0bb965": 50,
+    "9bce988e-4911-4432-acd8-cd913c436bd6": 50,
+    "4d5a489a-4dbe-4057-8bd7-aa1cbb4ec990": 50,
+    "26c9fd0d-3909-489b-b0e5-762dedc43c98": 50,
+    "c4559d0b-bba8-4326-aa20-a57b631ae0b4": 50,
+    "eb7adbd9-b5de-4e62-a5ff-bb45839fc019": 50
+  }
+}
