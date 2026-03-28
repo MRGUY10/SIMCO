@@ -1,1 +1,1 @@
-web: python -m gunicorn your_application.wsgi --bind 0.0.0.0:$PORT
+web: python -m gunicorn -k uvicorn.workers.UvicornWorker services.quiz_backend.main:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
