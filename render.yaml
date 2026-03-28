@@ -4,7 +4,7 @@ services:
     runtime: python
     rootDir: services/quiz_backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn services.quiz_backend.main:app --host 0.0.0.0 --port $PORT
+    startCommand: gunicorn your_application.wsgi --bind 0.0.0.0:$PORT
     envVars:
       - key: LLM_PROVIDER
         value: mistral_api
