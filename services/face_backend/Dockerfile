@@ -20,4 +20,4 @@ ENV PYTHONPATH=/app/src
 ENV FACE_CLASSIFIER_PORT=8084
 EXPOSE 8084
 
-CMD ["python", "src/web/faces.py"]
+CMD ["uvicorn", "web.faces:app", "--host", "0.0.0.0", "--port", "8084"]
