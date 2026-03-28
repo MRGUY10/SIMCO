@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         return value
     
     # LLM provider switch: "ollama" or "mistral_api"
-    LLM_PROVIDER: str = "ollama"
+    LLM_PROVIDER: str = "mistral_api"
 
     # Ollama LLM
     OLLAMA_BASE_URL: str = "http://localhost:11434"
@@ -54,7 +54,7 @@ class Settings(BaseSettings):
 
     # Hosted Mistral API
     MISTRAL_API_BASE_URL: str = "https://api.mistral.ai/v1"
-    MISTRAL_API_KEY: str = ""
+    MISTRAL_API_KEY: str = "AuTKCBPtPzXxR1RSJm4m6C3VnWwH9eaZ"
     MISTRAL_MODEL: str = "mistral-small-latest"
     MISTRAL_TIMEOUT: int = 60
 
