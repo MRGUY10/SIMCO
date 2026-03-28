@@ -61,5 +61,9 @@ def send_notification_email(payload: NotificationRequest) -> tuple[bool, str]:
                 server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
             server.sendmail(sender, [recipient], message.as_string())
         return True, "notification_sent"
+    except OSError as exc:
+        if settings.SOFT_FAIL_ON_SMTP_NETWORK_ERROR and getattr(exc, "errno", None) in {101, 113, -2, 11001}:
+            return True, f"notification_deferred_network_unreachable: {exc}"
+        return False, f"send_failed: {exc}"
     except Exception as exc:
         return False, f"send_failed: {exc}"

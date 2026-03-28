@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     MAIL_TIMEOUT_MS: int = 3000
     MAIL_WRITE_TIMEOUT_MS: int = 5000
     MAIL_FROM_NAME: str = "SIMCO Notifications"
+    SOFT_FAIL_ON_SMTP_NETWORK_ERROR: bool = True
     API_PORT: int = 8020
 
     model_config = SettingsConfigDict(
