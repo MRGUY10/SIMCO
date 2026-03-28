@@ -7,13 +7,13 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MAIL_HOST
-        sync: false
+        value: smtp.gmail.com
       - key: MAIL_PORT
         value: 587
       - key: MAIL_USERNAME
-        sync: false
+        value: kamdem.guy@institutsaintjean.org
       - key: MAIL_PASSWORD
-        sync: false
+        value: krcmwwfwnomgwmgi
       - key: MAIL_STARTTLS
         value: true
       - key: MAIL_AUTH
