@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .settings import settings
@@ -34,6 +34,4 @@ def health():
 @app.post("/notifications/quiz-result", response_model=NotificationResponse)
 def send_quiz_result_notification(payload: NotificationRequest):
     success, detail = send_notification_email(payload)
-    if not success:
-        raise HTTPException(status_code=500, detail=detail)
-    return NotificationResponse(success=True, detail=detail)
+    return NotificationResponse(success=success, detail=detail)

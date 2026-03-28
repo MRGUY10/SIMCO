@@ -280,6 +280,14 @@ def send_quiz_result_notification(session: dict, results_payload: dict) -> dict:
     except ValueError:
         response_json = {"detail": "notification_sent"}
 
+    if not response_json.get("success", True):
+        return {
+            "attempted": True,
+            "sent": False,
+            "reason": "notification_send_failed",
+            "detail": response_json.get("detail", "notification_send_failed"),
+        }
+
     return {
         "attempted": True,
         "sent": True,
