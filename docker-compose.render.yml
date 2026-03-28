@@ -1,0 +1,77 @@
+services:
+  quiz-backend:
+    build:
+      context: ./services/quiz_backend
+      dockerfile: Dockerfile
+    container_name: simco-quiz-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Use hosted Mistral API (no local Ollama)
+      - LLM_PROVIDER=mistral_api
+      - MISTRAL_API_BASE_URL=https://api.mistral.ai/v1
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - MISTRAL_MODEL=${MISTRAL_MODEL:-mistral-small-latest}
+      - MISTRAL_TIMEOUT=${MISTRAL_TIMEOUT:-60}
+
+      # Deployed service URLs
+      - SIMCO_LOGIC_BASE_URL=https://confidence-backend-v68b.onrender.com
+      - NOTIFICATION_BASE_URL=https://notification-simco.onrender.com
+      - NOTIFICATION_TIMEOUT_SECONDS=8
+
+      # Optional runtime config
+      - DEBUG=false
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    depends_on:
+      - confidence-backend
+      - notification-backend
+    restart: unless-stopped
+
+  face-backend:
+    build:
+      context: ./services/face_backend
+      dockerfile: Dockerfile
+    container_name: simco-face-backend
+    ports:
+      - "8084:8084"
+    restart: unless-stopped
+
+  confidence-backend:
+    build:
+      context: ./services/confidence_backend
+      dockerfile: Dockerfile
+    container_name: simco-confidence-backend
+    ports:
+      - "8010:8010"
+    restart: unless-stopped
+
+  notification-backend:
+    build:
+      context: ./services/notification_backend
+      dockerfile: Dockerfile
+    container_name: simco-notification-backend
+    ports:
+      - "8020:8020"
+    environment:
+      - MAIL_HOST=${MAIL_HOST}
+      - MAIL_PORT=${MAIL_PORT:-587}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - MAIL_STARTTLS=${MAIL_STARTTLS:-true}
+      - MAIL_AUTH=${MAIL_AUTH:-true}
+      - MAIL_FROM_NAME=${MAIL_FROM_NAME:-SIMCO Notifications}
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./quiz-frontend
+      dockerfile: Dockerfile
+    container_name: simco-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      # For browser usage, point this to your public quiz-backend URL on Render.
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-https://quiz-backend-vyp4.onrender.com}
+    depends_on:
+      - quiz-backend
+    restart: unless-stopped

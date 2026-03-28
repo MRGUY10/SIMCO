@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: simco-quiz-backend
+    runtime: python
+    rootDir: services/quiz_backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn your_application.wsgi --bind 0.0.0.0:$PORT
+    envVars:
+      - key: LLM_PROVIDER
+        value: mistral_api
+      - key: MISTRAL_API_BASE_URL
+        value: https://api.mistral.ai/v1
+      - key: MISTRAL_API_KEY
+        value: AuTKCBPtPzXxR1RSJm4m6C3VnWwH9eaZ
+      - key: MISTRAL_MODEL
+        value: mistral-small-latest
+      - key: MISTRAL_TIMEOUT
+        value: 60
+      - key: SIMCO_LOGIC_BASE_URL
+        sync: false
+      - key: NOTIFICATION_BASE_URL
+        sync: false
+      - key: NOTIFICATION_TIMEOUT_SECONDS
+        value: 8
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DEBUG
+        value: false
