@@ -61,11 +61,6 @@ class Settings(BaseSettings):
     # SIMCO Logic (neural confidence service)
     SIMCO_LOGIC_BASE_URL: str = "https://confidence-backend-v68b.onrender.com"
 
-    # Notification service
-    NOTIFICATIONS_ENABLED: bool = False
-    NOTIFICATION_BASE_URL: str = "https://notification-simco.onrender.com"
-    NOTIFICATION_TIMEOUT_SECONDS: int = 5
-    
     # Session Management
     SESSION_TIMEOUT: int = 3600  # 1 hour in seconds
     

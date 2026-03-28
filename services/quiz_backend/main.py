@@ -209,96 +209,11 @@ class TrueConfidenceRequest(BaseModel):
 
 
 def send_quiz_result_notification(session: dict, results_payload: dict) -> dict:
-    """Send quiz result email through notification backend (best-effort, non-blocking)."""
-    if not settings.NOTIFICATIONS_ENABLED:
-        return {
-            "attempted": False,
-            "sent": False,
-            "reason": "notifications_disabled",
-        }
-
-    user_name = (session.get("user_name") or "").strip()
-    user_email = (session.get("user_email") or "").strip()
-
-    if not user_email:
-        return {
-            "attempted": False,
-            "sent": False,
-            "reason": "missing_user_email",
-        }
-
-    quiz_result_payload = {
-        "score": results_payload.get("score", 0),
-        "total_questions": results_payload.get("total_questions", 0),
-        "percentage": results_payload.get("percentage", 0),
-        "level": results_payload.get("level"),
-        "message": results_payload.get("message"),
-        "recommendations": results_payload.get("recommendations", []),
-        "self_confidence": results_payload.get("self_confidence"),
-        "true_confidence": (results_payload.get("true_confidence") or {}).get("true_confidence"),
-        "profile_label": (results_payload.get("dunning_kruger") or {}).get("zone_label"),
-    }
-
-    payload = {
-        "user_name": user_name or "Étudiant",
-        "user_email": user_email,
-        "quiz_result": quiz_result_payload,
-        "question_results": [
-            {
-                "question": q.get("question", ""),
-                "is_correct": q.get("is_correct"),
-                "confidence_analysis": q.get("confidence_analysis"),
-                "face_confidence": q.get("face_confidence"),
-            }
-            for q in results_payload.get("question_results", [])
-        ],
-        "dunning_kruger": {
-            "actual_score": (results_payload.get("dunning_kruger") or {}).get("actual_score"),
-            "declared_confidence": (results_payload.get("dunning_kruger") or {}).get("declared_confidence"),
-            "calibration_score": (results_payload.get("dunning_kruger") or {}).get("calibration_score"),
-        },
-    }
-
-    try:
-        response = requests.post(
-            f"{settings.NOTIFICATION_BASE_URL}/notifications/quiz-result",
-            json=payload,
-            timeout=settings.NOTIFICATION_TIMEOUT_SECONDS,
-        )
-    except requests.RequestException as exc:
-        return {
-            "attempted": True,
-            "sent": False,
-            "reason": "notification_service_unavailable",
-            "error": str(exc),
-        }
-
-    if not response.ok:
-        return {
-            "attempted": True,
-            "sent": False,
-            "reason": "notification_service_error",
-            "status_code": response.status_code,
-            "detail": response.text[:500],
-        }
-
-    try:
-        response_json = response.json()
-    except ValueError:
-        response_json = {"detail": "notification_sent"}
-
-    if not response_json.get("success", True):
-        return {
-            "attempted": True,
-            "sent": False,
-            "reason": "notification_send_failed",
-            "detail": response_json.get("detail", "notification_send_failed"),
-        }
-
+    """Notifications disabled in backend; keep response shape stable."""
     return {
-        "attempted": True,
-        "sent": True,
-        "detail": response_json.get("detail", "notification_sent"),
+        "attempted": False,
+        "sent": False,
+        "detail": "notifications_disabled",
     }
 
 @app.get("/")
