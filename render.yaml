@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: simco-confidence-backend
+    runtime: docker
+    dockerfilePath: services/confidence_backend/Dockerfile
+    dockerContext: services/confidence_backend
