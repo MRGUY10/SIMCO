@@ -21,6 +21,25 @@ def resolve_smtp_host(host: str, port: int) -> str:
     return host
 
 
+def send_via_smtp(
+    smtp_host: str,
+    smtp_port: int,
+    timeout_seconds: float,
+    sender: str,
+    recipient: str,
+    message_as_string: str,
+    use_starttls: bool,
+    use_ssl: bool,
+) -> None:
+    smtp_cls = smtplib.SMTP_SSL if use_ssl else smtplib.SMTP
+    with smtp_cls(smtp_host, smtp_port, timeout=timeout_seconds) as server:
+        if use_starttls and not use_ssl:
+            server.starttls()
+        if settings.MAIL_AUTH:
+            server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+        server.sendmail(sender, [recipient], message_as_string)
+
+
 def build_email_subject(percentage: float) -> str:
     if percentage >= 80:
         return "SIMCO - Résultat Excellent 🎉"
@@ -67,15 +86,37 @@ def send_notification_email(payload: NotificationRequest) -> tuple[bool, str]:
     ) / 1000.0
     smtp_host = resolve_smtp_host(settings.MAIL_HOST, settings.MAIL_PORT)
 
+    message_as_string = message.as_string()
+
     try:
-        with smtplib.SMTP(smtp_host, settings.MAIL_PORT, timeout=timeout_seconds) as server:
-            if settings.MAIL_STARTTLS:
-                server.starttls()
-            if settings.MAIL_AUTH:
-                server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
-            server.sendmail(sender, [recipient], message.as_string())
+        send_via_smtp(
+            smtp_host=smtp_host,
+            smtp_port=settings.MAIL_PORT,
+            timeout_seconds=timeout_seconds,
+            sender=sender,
+            recipient=recipient,
+            message_as_string=message_as_string,
+            use_starttls=settings.MAIL_STARTTLS,
+            use_ssl=False,
+        )
         return True, "notification_sent"
     except OSError as exc:
+        if settings.MAIL_FALLBACK_SSL_465:
+            try:
+                fallback_host = resolve_smtp_host(settings.MAIL_HOST, 465)
+                send_via_smtp(
+                    smtp_host=fallback_host,
+                    smtp_port=465,
+                    timeout_seconds=timeout_seconds,
+                    sender=sender,
+                    recipient=recipient,
+                    message_as_string=message_as_string,
+                    use_starttls=False,
+                    use_ssl=True,
+                )
+                return True, "notification_sent_via_ssl_465"
+            except OSError:
+                pass
         if settings.SOFT_FAIL_ON_SMTP_NETWORK_ERROR and getattr(exc, "errno", None) in {101, 113, -2, 11001}:
             return True, f"notification_deferred_network_unreachable: {exc}"
         return False, f"send_failed: {exc}"

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     MAIL_HOST: str = "smtp.gmail.com"
     MAIL_PORT: int = 587
     MAIL_FORCE_IPV4: bool = True
+    MAIL_FALLBACK_SSL_465: bool = True
     MAIL_USERNAME: str = "kamdem.guy@institutsaintjean.org"
     MAIL_PASSWORD: str = "krcmwwfwnomgwmgi"
     MAIL_STARTTLS: bool = True
