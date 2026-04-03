@@ -26,10 +26,19 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000"
     ]
     
+    # LLM Provider
+    LLM_PROVIDER: str = "mistral_api"
+
     # Ollama LLM
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "mistral"
     OLLAMA_TIMEOUT: int = 120
+
+    # Hosted Mistral API
+    MISTRAL_API_BASE_URL: str = "https://api.mistral.ai/v1"
+    MISTRAL_API_KEY: str = "AuTKCBPtPzXxR1RSJm4m6C3VnWwH9eaZ"
+    MISTRAL_MODEL: str = "mistral-small-latest"
+    MISTRAL_TIMEOUT: int = 60
 
     # SIMCO Logic (neural confidence service)
     SIMCO_LOGIC_BASE_URL: str = "http://localhost:8010"

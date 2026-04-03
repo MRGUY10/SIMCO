@@ -28,6 +28,8 @@ app.add_middleware(
 # Ollama configuration
 OLLAMA_API_URL = f"{settings.OLLAMA_BASE_URL}/api/generate"
 OLLAMA_MODEL = settings.OLLAMA_MODEL
+MISTRAL_CHAT_API_URL = f"{settings.MISTRAL_API_BASE_URL}/chat/completions"
+LLM_PROVIDER = (settings.LLM_PROVIDER or "ollama").lower().strip()
 SIMCO_LOGIC_BASE_URL = settings.SIMCO_LOGIC_BASE_URL
 
 # Store quiz sessions in memory (in production, use a database)
@@ -49,6 +51,39 @@ def persist_session(session_id: str) -> None:
     session = quiz_sessions.get(session_id)
     if session is not None:
         save_session(session_id, session)
+
+
+def generate_with_llm(prompt: str) -> str:
+    """Generate content with the configured LLM provider."""
+    if LLM_PROVIDER == "mistral_api":
+        headers = {
+            "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": settings.MISTRAL_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+        }
+        response = requests.post(
+            MISTRAL_CHAT_API_URL,
+            json=payload,
+            headers=headers,
+            timeout=settings.MISTRAL_TIMEOUT,
+        )
+        response.raise_for_status()
+        data = response.json()
+        return (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+    }
+    response = requests.post(OLLAMA_API_URL, json=payload, timeout=settings.OLLAMA_TIMEOUT)
+    response.raise_for_status()
+    data = response.json()
+    return (data.get("response") or "").strip()
 
 
 def normalize_self_confidence(value) -> float:
@@ -225,7 +260,8 @@ def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "ollama_url": OLLAMA_API_URL
+        "llm_provider": LLM_PROVIDER,
+        "llm_url": MISTRAL_CHAT_API_URL if LLM_PROVIDER == "mistral_api" else OLLAMA_API_URL,
     }
 
 
@@ -850,17 +886,8 @@ D) [Option D]
 Réponse correcte: [A, B, C ou D]
 Explication: [Brève explication de la réponse]"""
         
-        payload = {
-            "model": OLLAMA_MODEL,
-            "prompt": prompt,
-            "stream": False
-        }
-        
         try:
-            response = requests.post(OLLAMA_API_URL, json=payload)
-            response.raise_for_status()
-            data = response.json()
-            generated_text = data.get("response", "")
+            generated_text = generate_with_llm(prompt)
             
             parsed_question = parse_quiz_response(generated_text)
             
